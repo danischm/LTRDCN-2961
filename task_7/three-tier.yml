@@ -1,0 +1,164 @@
+---
+# Three Tier Application Playbook
+- name: Configuring a new Three Tier Application
+  hosts: apic1
+  connection: local
+  gather_facts: no
+
+  vars_files:
+    - ./external-vars.yml
+  
+  # Anchor for login information
+  vars:
+    aci_info: &aci_info
+      hostname: "{{ inventory_hostname }}"
+      username: "{{ username }}"
+      private_key: "{{ key }}"
+      validate_certs: no
+      state: present
+
+  tasks:
+  - name: Create Ansible Tenant
+    cisco.aci.aci_tenant:
+      <<: *aci_info
+      tenant: "{{ tenant }}"
+      description: "Tenant configured by Ansible"
+
+  - name: Create ansible-VRF
+    cisco.aci.aci_vrf:
+      <<: *aci_info
+      tenant: "{{ tenant }}"
+      vrf: "{{ vrf }}"
+      description: "VRF configured by Ansible"
+
+  - name: Creating ansible-BD
+    cisco.aci.aci_bd:
+      <<: *aci_info
+      tenant: "{{ tenant }}"
+      vrf: "{{ vrf }}"
+      bd: "{{ bd.name }}"
+      enable_routing: yes
+      arp_flooding: no
+      l2_unknown_unicast: proxy
+      description: "BD configured by Ansible"
+
+  - name: Creating ansible-BD Subnet
+    cisco.aci.aci_bd_subnet:
+      <<: *aci_info      
+      tenant: "{{ tenant }}"
+      bd: "{{ bd.name }}"
+      gateway: "{{ bd.ip }}"
+      mask: "{{ bd.mask }}"
+      scope: "private"
+      description: "BD subnet added by Ansible"
+
+  - name: Create ansible-AP
+    cisco.aci.aci_ap:
+      <<: *aci_info
+      tenant: "{{ tenant }}"
+      ap: "{{ app_profile }}"
+      description: "app profile configured by Ansible"
+
+  - name: Creating EPGs
+    cisco.aci.aci_epg:
+      <<: *aci_info
+      tenant: "{{ tenant }}"
+      ap: "{{ app_profile }}"
+      epg: "{{ item.epg }}"
+      bd: "{{ bd.name }}"
+      description: "EPG configured by Ansible"
+    loop:
+      - epg: "{{ epg1 }}"
+      - epg: "{{ epg2 }}"
+      - epg: "{{ epg3 }}"
+
+  - name: Creating Contracts
+    cisco.aci.aci_contract:
+      <<: *aci_info
+      contract: "{{ item.contract }}"
+      tenant: "{{ tenant }}"
+      scope: "context"
+      description: "Contract created by Ansible"
+    loop:
+      - contract: "{{ web_to_app_contract }}"
+      - contract: "{{ app_to_db_contract }}"
+
+  - name: Add Filters
+    cisco.aci.aci_filter:
+      <<: *aci_info
+      filter: "{{ item.filter }}"
+      tenant: "{{ tenant }}"
+      description: "Filter created by Ansible"
+    loop:
+      - filter: "{{ http_filter }}"
+      - filter: "{{ db_filter }}"
+
+  - name: Add Port 80 and 1433 to Filter entries
+    cisco.aci.aci_filter_entry:
+      <<: *aci_info
+      entry: "{{ item.entry }}"
+      tenant: "{{ tenant }}"
+      ether_type: ip
+      ip_protocol: tcp
+      dst_port: "{{ item.dst_port }}"
+      filter: "{{ item.filter }}"
+      description: "Filter Entry created by Ansible"
+    loop:
+      - entry: "{{ http_filter_entry }}"
+        dst_port: 80
+        filter: "{{ http_filter }}"
+      - entry: "{{ db_filter_entry }}"
+        dst_port: 1433
+        filter: "{{ db_filter }}"
+
+  - name: Bind subjects to contracts
+    cisco.aci.aci_contract_subject:
+      <<: *aci_info      
+      tenant: "{{ tenant }}"
+      contract: "{{ item.contract }}"
+      subject: "{{ item.subject }}"
+      reverse_filter: yes
+      description: "Subject created by Ansible"
+    loop:
+      - contract: "{{ web_to_app_contract }}"
+        subject: "{{ web_to_app_contract_subject }}"
+      - contract: "{{ app_to_db_contract }}"
+        subject: "{{ app_to_db_contract_subject }}"
+
+  - name: Bind Contract Subjects to filter
+    cisco.aci.aci_contract_subject_to_filter:
+      <<: *aci_info      
+      tenant: "{{ tenant }}"
+      contract: "{{ item.contract }}"
+      filter: "{{ item.filter }}"
+      subject: "{{ item.subject }}"
+    loop:
+      - contract: "{{ web_to_app_contract }}"
+        filter: "{{ http_filter }}"
+        subject: "{{ web_to_app_contract_subject }}"
+      - contract: "{{ app_to_db_contract }}"
+        filter: "{{ db_filter }}"
+        subject: "{{ app_to_db_contract_subject }}"
+
+  - name: Bind EPGs to Contract
+    cisco.aci.aci_epg_to_contract:
+      <<: *aci_info
+      tenant: "{{ tenant }}"
+      epg: "{{ item.epg }}"
+      ap: "{{ app_profile }}"
+      contract: "{{ item.contract }}"
+      contract_type: "{{ item.type }}"
+    loop:
+    - epg: "{{ epg1 }}"
+      type: consumer
+      contract: "{{ web_to_app_contract }}"
+    - epg: "{{ epg2 }}"
+      type: provider
+      contract: "{{ web_to_app_contract }}"
+    - epg: "{{ epg2 }}"
+      type: consumer
+      contract: "{{ app_to_db_contract }}"
+    - epg: "{{ epg3 }}"
+      type: provider
+      contract: "{{ app_to_db_contract }}"
+

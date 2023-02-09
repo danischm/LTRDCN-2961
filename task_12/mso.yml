@@ -1,0 +1,99 @@
+---
+- name: Add an MSO Schema
+  hosts: nd
+  connection: local
+  gather_facts: no
+
+  vars:
+    mso_info: &mso_info
+      hostname: "{{ ansible_host }}"
+      username: "{{ ansible_user }}"
+      password: "{{ ansible_pass }}"
+
+  tasks:
+  - name: Add a new template to a schema
+    cisco.mso.mso_schema_template:
+      <<: *mso_info
+      tenant: Tesla
+      schema: L3_stretch_schema
+      template: Template1
+      validate_certs: no
+      state: present
+
+  - name: Add San Francisco & NY sites to a schema
+    cisco.mso.mso_schema_site:
+      <<: *mso_info
+      schema: L3_stretch_schema
+      site: "{{ item.site }}"
+      template: Template1
+      validate_certs: no
+      state: present
+    loop:
+    - site: San Francisco
+    - site: New York
+
+  - name: Create MSO VRFs
+    cisco.mso.mso_schema_template_vrf:
+      <<: *mso_info
+      schema: L3_stretch_schema
+      template: Template1
+      vrf: mso-vrf
+      vzany: yes
+      validate_certs: no
+      state: present
+
+  - name: Create and Assign Bridge Domains to VRFs
+    cisco.mso.mso_schema_template_bd:
+      <<: *mso_info
+      schema: L3_stretch_schema
+      template: Template1
+      bd: mso-bd
+      vrf:
+        name: mso-vrf
+      layer2_stretch: true
+      validate_certs: no
+      state: present
+
+  - name: Add a new subnet to a BD
+    cisco.mso.mso_schema_template_bd_subnet:
+      <<: *mso_info
+      schema: L3_stretch_schema
+      template: Template1
+      bd: mso-bd
+      subnet: 10.100.100.1/24
+      validate_certs: no
+      state: present
+
+  - name: Create the Application Profiles
+    cisco.mso.mso_schema_template_anp:
+      <<: *mso_info
+      schema: L3_stretch_schema
+      template: Template1
+      anp: mso-ap
+      validate_certs: no
+      state: present
+
+  - name: Create Endpoint Groups
+    cisco.mso.mso_schema_template_anp_epg:
+      <<: *mso_info
+      schema: L3_stretch_schema
+      template: Template1
+      anp: mso-ap
+      epg: "{{ item.epg }}"
+      preferred_group: yes
+      bd:
+        name: mso-bd
+      validate_certs: no
+      state: present
+    loop:
+      - epg: coke
+      - epg: pepsi
+
+  - name: Deploy a schema template
+    cisco.mso.mso_schema_template_deploy:
+      <<: *mso_info
+      schema: L3_stretch_schema
+      template: Template1
+      validate_certs: no
+      state: deploy
+

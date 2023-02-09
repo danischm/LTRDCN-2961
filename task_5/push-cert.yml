@@ -1,0 +1,62 @@
+---
+# User certificate
+- name: Push x509 cert and create user ansible for signature-based authentication
+  hosts: apic1
+  connection: local
+  gather_facts: no
+  collections:
+  - cisco.aci
+
+  tasks:
+  - name: Add a user
+    aci_aaa_user:
+      hostname: "{{ inventory_hostname }}"
+      username: "{{ username }}"
+      password: "{{ password }}"
+      aaa_user: ansible
+      aaa_password: C1sco-321
+      expiration: never
+      expires: no
+      clear_password_history: yes
+      validate_certs: no
+      state: present
+
+  - name: Add a certificate to user ansible
+    aci_aaa_user_certificate:
+      use_proxy: no
+      hostname: "{{ inventory_hostname }}"
+      username: "{{ username }}"
+      password: "{{ password }}"
+      aaa_user: ansible
+      name: ansible
+      certificate_name: ansible
+      certificate_data: "{{ lookup('file', 'ansible.crt') }}"
+      validate_certs: no
+      state: present
+
+  - name: Set the user role and priv
+    aci_rest:
+      hostname: "{{ inventory_hostname }}"
+      username: "{{ username }}"
+      password: "{{ password }}"
+      validate_certs: no
+      path: /api/node/mo/uni/userext/user-ansible/userdomain-all.json
+      method: post
+      content:
+        {"aaaUserDomain":
+          {"attributes":{
+            "name":"all",
+            "rn":"userdomain-all",
+            },
+            "children":[
+              {"aaaUserRole":
+                {"attributes":{
+                  "name":"admin","privType":"writePriv",
+                  "rn":"role-admin",
+                  },
+                  "children":[]
+                }
+              }
+            ]
+          }
+        }
